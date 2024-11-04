@@ -1,6 +1,6 @@
 import numpy as np
 import matplotlib.pyplot as plt
-from scipy.spatial import cKDTree
+from scipy.spatial import KDTree
 from scipy.ndimage import binary_dilation
 
 def pixelated_barbell():
@@ -47,12 +47,12 @@ def pixelated_barbell():
     plt.imshow(barbell, cmap = "gray")
     plt.colorbar()
     plt.axis('equal')
-    plt.show()
+    #plt.show()
 
     return barbell, X, Y
 
 def build_kdtree(pixel_list):
-    tree = cKDTree(pixel_list)
+    tree = KDTree(pixel_list)
     return tree
 
 def build_knn_graph(k = 4):
@@ -62,11 +62,43 @@ def build_knn_graph(k = 4):
     x_coords = X[barbell_indices]
     y_coords = Y[barbell_indices]
     pixel_coords = np.column_stack((x_coords, y_coords))
-
+    point_labels = barbell[barbell_indices]
     tree = build_kdtree(pixel_coords)
     distances, indices = tree.query(pixel_coords, k = k + 1)
-    knn_indices = indices[:, 1]
-    knn_distances = distances[:, 1]
+    knn_indices = indices[:, 1:]
+    knn_distances = distances[:, 1:]
+    visualize_knn_graph(pixel_coords, knn_indices, point_labels)
     return knn_indices, knn_distances
 
+def visualize_knn_graph(pixel_coords, knn_indices, point_labels=None):
+    # Create a figure
+    plt.figure(figsize=(8, 8))
 
+    # Plot the nodes
+    x_coords = pixel_coords[:, 0]
+    y_coords = pixel_coords[:, 1]
+
+    if point_labels is not None:
+        # Color nodes based on their labels (1: barbell, 2: edge)
+        colors = np.where(point_labels == 1, 'blue', 'red')  # 'blue' for barbell, 'green' for edge
+        plt.scatter(x_coords, y_coords, c=colors, s=2, label='Pixels')
+    else:
+        # Plot all nodes in one color
+        plt.scatter(x_coords, y_coords, c='blue', s=2)
+
+    # Plot the edges
+    num_points = len(pixel_coords)
+    for i in range(num_points):
+        node = pixel_coords[i]
+        neighbors = pixel_coords[knn_indices[i]]
+        for neighbor in neighbors:
+            # Draw a line between node and neighbor
+            x_values = [node[0], neighbor[0]]
+            y_values = [node[1], neighbor[1]]
+            plt.plot(x_values, y_values, c='black', linewidth=0.1)
+
+    plt.axis('equal')
+    plt.show()
+
+
+build_knn_graph()
