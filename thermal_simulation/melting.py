@@ -3,19 +3,15 @@ from barbell import barbell
 from scipy.sparse import csr_matrix, diags, identity
 from scipy.sparse.linalg import spsolve
 import matplotlib.pyplot as plt
-from mpl_toolkits.mplot3d import Axes3D  # Import 3D plotting toolkit
-from matplotlib import cm  # Import colormap
-from scipy.interpolate import griddata
 
 def initialize_conductances(knn_distances):
-    k_0 = 0.0001  # base thermal conductivity
+    k_0 = 0.001  # base thermal conductivity
     conductances = k_0 / knn_distances
     return conductances
 
-def melting(points_per_second=1000, pixels_per_m=2000, k=2):
+def melting(points_per_second=1000, pixels_per_m=2000, k=4):
     dt = 1 / points_per_second
-    h = 10000
-    T_0 = 300
+    T_0 = 300  # Ambient temperature in K
 
     knn_indices, knn_distances, pixel_coords, point_labels, T = melting_setup(k, T_0, pixels_per_m)
     num_nodes = len(knn_indices)
@@ -23,31 +19,33 @@ def melting(points_per_second=1000, pixels_per_m=2000, k=2):
     
     laplacian = construct_laplacian_matrix(knn_indices, conductances)
 
-    epsilon = 0.1
-    b_radiation = np.ones(num_nodes)
+    # Radiative loss over all nodes
+    epsilon = 0.6  # Emissivity
     sigma = 5.67e-8  # Stefan-Boltzmann constant
     linearized_radiative_coeff = 4 * sigma * epsilon * T_0 ** 3
-    radiative_matrix = diags(linearized_radiative_coeff * b_radiation)
+    radiative_matrix = diags(linearized_radiative_coeff * np.ones(num_nodes))
 
-    edge_nodes = (point_labels == 2)
-    b = edge_nodes.astype(float)
+    # Convective (conductive) loss at edges
+    edge_nodes = (point_labels == 2).astype(float)
+    internal_nodes = np.where(point_labels != 2)[0]
+    h_edge = 10 # Heat transfer coefficient at edges, adjust as needed
+    convective_coeff = h_edge * edge_nodes
+    convective_matrix = diags(convective_coeff)
 
-    internal_nodes = np.where(~edge_nodes)[0]
-    melting_nodes = np.random.choice(internal_nodes, size=num_nodes, replace=True)
-
-    Q_melt = 0
-    T_max = []
-    variance_list = []
-    simulation_steps = int(1 * num_nodes)
+    # Combine system matrix
+    A = laplacian + radiative_matrix + convective_matrix
 
     # Construct Crank-Nicolson matrices
     I = identity(num_nodes)
-    boundary_matrix = diags(h * b)
-    A = laplacian - boundary_matrix - radiative_matrix
+    lhs_matrix = I + (dt / 2) * A
+    rhs_matrix = I - (dt / 2) * A
 
-    # Crank-Nicolson matrices: (I - dt/2 * A) and (I + dt/2 * A)
-    lhs_matrix = I - (dt / 2) * A  # Left-hand side matrix
-    rhs_matrix = I + (dt / 2) * A  # Right-hand side matrix
+    # Time-stepping parameters
+    Q_melt = 1000  # No heat input in this scenario
+    melting_nodes = np.random.choice(internal_nodes, size=num_nodes, replace=True)
+    T_max = []
+    variance_list = []
+    simulation_steps = int(0.05 * num_nodes)
 
     for n in range(simulation_steps):
         S = np.zeros(num_nodes)
@@ -57,7 +55,7 @@ def melting(points_per_second=1000, pixels_per_m=2000, k=2):
         # Right-hand side for Crank-Nicolson
         rhs = rhs_matrix.dot(T) + dt * S
 
-        # Solve the linear system (I - dt/2 * A) * T_new = rhs
+        # Solve the linear system
         T = spsolve(lhs_matrix, rhs)
 
         T_max.append(np.max(T))
