@@ -3,20 +3,19 @@ import matplotlib.pyplot as plt
 from scipy.spatial import KDTree
 from scipy.ndimage import binary_dilation
 
-def pixelated_barbell():
+def pixelated_barbell(pixels_per_m):
     #defining geometry of the barbell
-    ball_radius = 1
-    handle_length = 1
-    handle_thickness = 0.1
+    ball_radius = 0.02
+    handle_length = 0.02
+    handle_thickness = 0.002
     ball_centers = np.array([-(ball_radius + handle_length / 2), (ball_radius + handle_length / 2)])
 
     #defining pixelation of the barbell
     total_width = ball_radius * 4 + handle_length
     total_height = ball_radius * 2
-    pixels_per_cm = 20
-    pixel_width = 1 / pixels_per_cm
-    pixels_x = int(total_width * pixels_per_cm + 2)
-    pixels_y = int(total_height * pixels_per_cm + 2)
+    pixel_width = 1 / pixels_per_m
+    pixels_x = int(total_width * pixels_per_m + 2)
+    pixels_y = int(total_height * pixels_per_m + 2)
 
     #initializing the grid
     x_values = np.linspace(-(total_width / 2 + pixel_width), (total_width / 2  + pixel_width), pixels_x)
@@ -43,10 +42,10 @@ def pixelated_barbell():
     barbell[edge_points] = 2
 
     # Plot the barbell shape
-    plt.figure(figsize=(6, 6))
-    plt.imshow(barbell, cmap = "gray")
-    plt.colorbar()
-    plt.axis('equal')
+    #plt.figure(figsize=(6, 6))
+    #plt.imshow(barbell, cmap = "gray")
+    #plt.colorbar()
+    #plt.axis('equal')
     #plt.show()
 
     return barbell, X, Y
@@ -55,9 +54,9 @@ def build_kdtree(pixel_list):
     tree = KDTree(pixel_list)
     return tree
 
-def build_knn_graph(k = 4):
+def build_knn_graph(k, pixels_per_m):
     # Call the function
-    barbell, X, Y = pixelated_barbell()
+    barbell, X, Y = pixelated_barbell(pixels_per_m)
     barbell_indices = np.where(barbell > 0)
     x_coords = X[barbell_indices]
     y_coords = Y[barbell_indices]
@@ -67,8 +66,8 @@ def build_knn_graph(k = 4):
     distances, indices = tree.query(pixel_coords, k = k + 1)
     knn_indices = indices[:, 1:]
     knn_distances = distances[:, 1:]
-    visualize_knn_graph(pixel_coords, knn_indices, point_labels)
-    return knn_indices, knn_distances
+    #visualize_knn_graph(pixel_coords, knn_indices, point_labels)
+    return knn_indices, knn_distances, pixel_coords, point_labels
 
 def visualize_knn_graph(pixel_coords, knn_indices, point_labels=None):
     # Create a figure
@@ -99,6 +98,3 @@ def visualize_knn_graph(pixel_coords, knn_indices, point_labels=None):
 
     plt.axis('equal')
     plt.show()
-
-
-build_knn_graph()
