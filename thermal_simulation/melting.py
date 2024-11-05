@@ -43,7 +43,7 @@ def melting(points_per_second=1000, pixels_per_m=2000, k=2):
     # Construct Crank-Nicolson matrices
     I = identity(num_nodes)
     boundary_matrix = diags(h * b)
-    A = laplacian + boundary_matrix + radiative_matrix
+    A = laplacian - boundary_matrix - radiative_matrix
 
     # Crank-Nicolson matrices: (I - dt/2 * A) and (I + dt/2 * A)
     lhs_matrix = I - (dt / 2) * A  # Left-hand side matrix
