@@ -5,8 +5,8 @@ from scipy.ndimage import binary_dilation
 
 def pixelated_barbell(pixels_per_m):
     #defining geometry of the barbell
-    ball_radius = 0.02
-    handle_length = 0.02
+    ball_radius = 0.01
+    handle_length = 0.01
     handle_thickness = 0.002
     ball_centers = np.array([-(ball_radius + handle_length / 2), (ball_radius + handle_length / 2)])
 
@@ -40,13 +40,6 @@ def pixelated_barbell(pixels_per_m):
     edge_points = expanded_barbell & (~barbell_shape)
 
     barbell[edge_points] = 2
-
-    # Plot the barbell shape
-    #plt.figure(figsize=(6, 6))
-    #plt.imshow(barbell, cmap = "gray")
-    #plt.colorbar()
-    #plt.axis('equal')
-    #plt.show()
 
     return barbell, X, Y
 
