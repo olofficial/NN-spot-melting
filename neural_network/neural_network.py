@@ -1,78 +1,13 @@
 import torch
 from torch.utils.data import Dataset, DataLoader
 from thermal_simulation.melting import melting_setup, compute_melting
+from data_generation.random_generation import generate_training_data
 import numpy as np
 import torch.nn as nn
 import torch.optim as optim
 import math
 import os
-
-def generate_training_data(
-    simulation_setup, num_sequences=800, save_filename="training_data.npz", log_interval=1
-):
-    internal_nodes = simulation_setup["internal_nodes"]
-
-    # Check if the training data file exists
-    if os.path.exists(save_filename):
-        # Load existing data
-        existing_data = np.load(save_filename, allow_pickle=True)
-        sequences = existing_data["sequences"].tolist()
-        variances = existing_data["variances"].tolist()
-    else:
-        sequences = []
-        variances = []
-
-    for i in range(num_sequences):
-        # Generate a random melting sequence
-        sequence = np.random.permutation(internal_nodes)
-        # Compute the variance metric
-        if i == 0:
-            variance_metric, variance_list = compute_melting(
-                simulation_setup, melting_sequence=sequence, log_interval=log_interval
-            )
-            print(f"Variance metric for first sequence: {variance_metric}")
-        else:
-            variance_metric, _ = compute_melting(
-                simulation_setup, melting_sequence=sequence, log_interval=log_interval
-            )
-        # Add to training data
-        sequences.append(sequence)
-        variances.append(variance_metric)
-
-    # Convert sequences and variances to NumPy arrays
-    sequences_array = np.array(sequences, dtype=object)
-    variances_array = np.array(variances)
-
-    # Save the combined data back to the file
-    np.savez(save_filename, sequences=sequences_array, variances=variances_array)
-
-    # Prepare data for the dataset
-    training_data = list(zip(sequences_array, variances_array))
-    return training_data
-
-def load_training_data(filename="training_data.npz"):
-    if os.path.exists(filename):
-        data = np.load(filename, allow_pickle=True)
-        sequences = data["sequences"]
-        variances = data["variances"]
-        training_data = list(zip(sequences, variances))
-        print(f"Loaded {len(training_data)} training examples from '{filename}'.")
-        return training_data
-    else:
-        print(f"No existing training data found at '{filename}'.")
-        return []
-
-def simulation_parameters(pixels_per_m):
-    simulation_setup = melting_setup(pixels_per_m)
-    
-    # Normalize the pixel coordinates
-    coords = simulation_setup['pixel_coords']
-    coords_min = coords.min(axis=0)
-    coords_max = coords.max(axis=0)
-    normalized_coords = (coords - coords_min) / (coords_max - coords_min)
-    simulation_setup['pixel_coords'] = normalized_coords
-
-    return simulation_setup
+import matplotlib.pyplot as plt
 
 class MeltingSequenceDataset(Dataset):
     def __init__(self, training_data, simulation_setup):
@@ -95,7 +30,6 @@ class MeltingSequenceDataset(Dataset):
 
 def collate_fn(batch):
     sequences, coords_list, targets = zip(*batch)
-    # Pad sequences and coordinates to the same length
     seq_lengths = [len(seq) for seq in sequences]
     max_length = max(seq_lengths)
 
@@ -108,8 +42,8 @@ def collate_fn(batch):
         for coords in coords_list
     ]
 
-    padded_sequences = torch.stack(padded_sequences).transpose(0, 1)  # Shape: [max_length, batch_size]
-    padded_coords = torch.stack(padded_coords).transpose(0, 1)  # Shape: [max_length, batch_size, coord_dim]
+    padded_sequences = torch.stack(padded_sequences).transpose(0, 1) 
+    padded_coords = torch.stack(padded_coords).transpose(0, 1)
     targets = torch.stack(targets)
     return padded_sequences, padded_coords, targets
 
@@ -170,6 +104,31 @@ class MeltSequenceTransformer(nn.Module):
         output = self.fc_out(output)
         return output.squeeze()
 
+
+def load_training_data(filename):
+    if os.path.exists(filename):
+        data = np.load(filename, allow_pickle=True)
+        sequences = data["sequences"]
+        variances = data["variances"]
+        training_data = list(zip(sequences, variances))
+        print(f"Loaded {len(training_data)} training examples from '{filename}'.")
+        return training_data
+    else:
+        print(f"No existing training data found at '{filename}'.")
+        return []
+
+def simulation_parameters(pixels_per_m):
+    simulation_setup = melting_setup(pixels_per_m)
+    
+    # Normalize the pixel coordinates
+    coords = simulation_setup['pixel_coords']
+    coords_min = coords.min(axis=0)
+    coords_max = coords.max(axis=0)
+    normalized_coords = (coords - coords_min) / (coords_max - coords_min)
+    simulation_setup['pixel_coords'] = normalized_coords
+
+    return simulation_setup
+
 def train_transformer_model(dataloader, num_nodes, coord_dim, num_epochs=10, learning_rate=0.1):
     model = MeltSequenceTransformer(num_nodes=num_nodes, coord_dim=coord_dim)
     criterion = nn.MSELoss()
@@ -199,7 +158,7 @@ def train_transformer_model(dataloader, num_nodes, coord_dim, num_epochs=10, lea
     torch.save(model.state_dict(), "trained_model.pth")
     return model, epoch_losses
 
-def find_best_sequence(model, simulation_setup, num_attempts=1000):
+def find_best_sequence(model, simulation_setup, num_attempts):
     model.eval()
     internal_nodes = simulation_setup["internal_nodes"]
     num_nodes = len(internal_nodes)
@@ -227,8 +186,8 @@ def find_best_sequence(model, simulation_setup, num_attempts=1000):
 
     return best_sequence, lowest_predicted_variance
 
-def training_main(pixels_per_m, generate_new_data=True, num_sequences=800):
-    training_data_file = "training_data" + str(pixels_per_m) + ".npz"
+def training_main(pixels_per_m, generate_new_data, num_sequences):
+    training_data_file = "../" + str(pixels_per_m) + "/training_data" + str(pixels_per_m) + ".npz"
     simulation_setup = simulation_parameters(pixels_per_m)
     internal_nodes = simulation_setup["internal_nodes"]
     num_nodes = max(internal_nodes) + 1
@@ -249,11 +208,9 @@ def training_main(pixels_per_m, generate_new_data=True, num_sequences=800):
 
     # Train the model and get epoch losses
     model, epoch_losses = train_transformer_model(
-        dataloader, num_nodes=num_nodes, coord_dim=coord_dim, num_epochs=10, learning_rate=0.1
+        dataloader, num_nodes=num_nodes, coord_dim=coord_dim, num_epochs=1, learning_rate=0.1
     )
 
-    # Plot the loss curve
-    import matplotlib.pyplot as plt
     plt.figure()
     plt.plot(range(1, len(epoch_losses) + 1), epoch_losses, marker='o')
     plt.xlabel('Epoch')
@@ -269,7 +226,7 @@ def training_main(pixels_per_m, generate_new_data=True, num_sequences=800):
 
     # Compute variance metric and variance list
     actual_variance, variance_list = compute_melting(
-        simulation_setup, melting_sequence=best_sequence, plot_melting=True, log_interval=1
+        simulation_setup, melting_sequence=best_sequence, plot_melting=True
     )
     print(f"Actual variance of the best sequence: {actual_variance}")
 
