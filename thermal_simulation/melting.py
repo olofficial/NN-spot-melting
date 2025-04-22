@@ -3,150 +3,185 @@ from barbell import barbell
 from scipy.sparse import csr_matrix, diags, identity
 from scipy.sparse.linalg import bicgstab, spilu, LinearOperator
 import matplotlib.pyplot as plt
+from typing import Dict, Tuple, Optional, List
+from joblib import Parallel, delayed
 
-def initialize_conductances(knn_distances, pixels_per_m):
-    k_0 = 170 
-    conductances = k_0 / knn_distances
-    return conductances
 
-def melting_setup(pixels_per_m, points_per_second=1000, k=4, T_init = None, melting_sequence = None):
-    dt = 1 / points_per_second
-    T_0 = 300  
-    knn_indices, knn_distances, pixel_coords, point_labels = barbell.build_knn_graph(k, pixels_per_m)
-    if T_init == None:
-        T_init = np.zeros(len(knn_indices)) + T_0
-    num_nodes = len(knn_indices)
-    conductances = initialize_conductances(knn_distances, pixels_per_m)
+class ConductanceCalculator:
+    def initialize_conductances(knn_distances, k_0 = 170.0):
+        conductances = k_0 / knn_distances
+        return conductances
+
+
+class MatrixBuilder:
     
-    laplacian = construct_laplacian_matrix(knn_indices, conductances)
+    def construct_adjacency_matrix(knn_indices, conductances):
+        num_nodes = len(knn_indices)
+        row_indices = np.repeat(np.arange(num_nodes), knn_indices.shape[1])
+        col_indices = knn_indices.flatten()
+        data = conductances.flatten()
+        adjacency_matrix = csr_matrix((data, (row_indices, col_indices)), shape=(num_nodes, num_nodes))
+        return adjacency_matrix
 
-    epsilon = 0.3 
-    sigma = 5.67e-8 
-    h_rad = 4 * sigma * epsilon * T_0 ** 3
+    def construct_degree_matrix(adjacency_matrix):
+        degrees = np.array(adjacency_matrix.sum(axis=1)).flatten()
+        degree_matrix = diags(degrees, format='csr')
+        return degree_matrix
 
-    edge_nodes = (point_labels == 2).astype(float)
-    internal_nodes = np.where(point_labels != 2)[0]
-    h_edge = 200 
-    h_conv = h_edge * edge_nodes
+    def construct_laplacian_matrix(knn_indices, conductances):
+        adjacency_matrix = MatrixBuilder.construct_adjacency_matrix(knn_indices, conductances)
+        degree_matrix = MatrixBuilder.construct_degree_matrix(adjacency_matrix)
+        laplacian_matrix = degree_matrix - adjacency_matrix
+        return laplacian_matrix
 
-    h_total = h_rad + h_conv
-    b = h_total * T_0
-    heat_loss_matrix = diags(h_total)
 
-    A = laplacian + heat_loss_matrix
+class SimulationSetup:
+    def __init__(self, spots_per_m, points_per_second = 1000, k = 4,
+                 T_init = None, melting_sequence = None):
+        self.spots_per_m = spots_per_m
+        self.points_per_second = points_per_second
+        self.k = k
+        self.T_init = T_init
+        self.melting_sequence = melting_sequence
+        self.simulation_setup = self.setup_simulation()
 
-    I = identity(num_nodes)
-    lhs_matrix = I + (dt / 2) * A
-    rhs_matrix = I - (dt / 2) * A
+    def setup_simulation(self):
+        dt = 1 / self.points_per_second
+        T_0 = 300
+        knn_indices, knn_distances, spot_coords, point_labels = barbell.build_knn_graph(self.k, self.spots_per_m)
+        
+        if self.T_init is None:
+            T_init = np.full(len(knn_indices), T_0)
+        else:
+            T_init = self.T_init
 
-    Q_melt = 2e13 / pixels_per_m ** 2
-    if melting_sequence == None:
-        melting_sequence = np.random.choice(internal_nodes, size=num_nodes, replace=True)
-        simulation_steps = int(1 * len(internal_nodes))
-    else:
-        simulation_steps = len(melting_sequence)
+        num_nodes = len(knn_indices)
+        conductances = ConductanceCalculator.initialize_conductances(knn_distances)
+        
+        laplacian = MatrixBuilder.construct_laplacian_matrix(knn_indices, conductances)
 
-    simulation_setup = {
-        'lhs_matrix': lhs_matrix,
-        'rhs_matrix': rhs_matrix,
-        'T_0': T_0,
-        'dt': dt,
-        'num_nodes': num_nodes,
-        'internal_nodes': internal_nodes,
-        'Q_melt': Q_melt,
-        'b': b,
-        'knn_indices': knn_indices,
-        'pixel_coords': pixel_coords,
-        'heat_loss_matrix': heat_loss_matrix,
-        'simulation_steps': simulation_steps,
-        'T_init' : T_init,
-        'melting_sequence': melting_sequence
-    }
+        epsilon = 0.3
+        sigma = 5.67e-8
+        h_rad = 4 * sigma * epsilon * T_0 ** 3
+
+        edge_nodes = (point_labels == 2).astype(float)
+        internal_nodes = np.where(point_labels != 2)[0]
+        h_edge = 200
+        h_conv = h_edge * edge_nodes
+
+        h_total = h_rad + h_conv
+        b = h_total * T_0
+        heat_loss_matrix = diags(h_total)
+
+        A = laplacian + heat_loss_matrix
+
+        I = identity(num_nodes)
+        lhs_matrix = I + (dt / 2) * A
+        rhs_matrix = I - (dt / 2) * A
+
+        Q_melt = 3e13 / self.spots_per_m ** 2
+        if self.melting_sequence is None:
+            melting_sequence = np.random.choice(internal_nodes, size=num_nodes, replace=True)
+            simulation_steps = int(1 * len(internal_nodes))
+        else:
+            melting_sequence = self.melting_sequence
+            simulation_steps = len(melting_sequence)
+
+        simulation_setup = {
+            'lhs_matrix': lhs_matrix,
+            'rhs_matrix': rhs_matrix,
+            'T_0': T_0,
+            'dt': dt,
+            'num_nodes': num_nodes,
+            'internal_nodes': internal_nodes,
+            'Q_melt': Q_melt,
+            'b': b,
+            'knn_indices': knn_indices,
+            'spot_coords': spot_coords,
+            'heat_loss_matrix': heat_loss_matrix,
+            'simulation_steps': simulation_steps,
+            'T_init' : T_init,
+            'melting_sequence': melting_sequence,
+            'spots_per_m': self.spots_per_m
+        }
+        
+        return simulation_setup
+
+
+class MeltingSimulator:
+    def __init__(self, simulation_setup):
+        self.simulation_setup = simulation_setup
+
+    def compute_melting(self, plot_melting = False):
+        setup = self.simulation_setup
+        simulation_steps = setup['simulation_steps']
+        num_nodes = setup['num_nodes']
+        melting_sequence = setup['melting_sequence']
+        internal_nodes = setup['internal_nodes']
+        Q_melt = setup['Q_melt']
+        T_init = setup['T_init']
+        spot_coords = setup['spot_coords']
     
-    return simulation_setup
-
-def compute_melting(simulation_setup, melting_sequence = None, plot_melting = False):
-    simulation_steps = simulation_setup['simulation_steps']
-    num_nodes = simulation_setup['num_nodes']
-    if melting_sequence.any() == 0:
-        melting_sequence = simulation_setup['melting_sequence']
-    rhs_matrix = simulation_setup['rhs_matrix']
-    lhs_matrix = simulation_setup['lhs_matrix']
-    b = simulation_setup['b']
-    dt = simulation_setup['dt']
-    internal_nodes = simulation_setup['internal_nodes']
-    Q_melt = simulation_setup['Q_melt']
-    T_init = simulation_setup['T_init']
-    pixel_coords = simulation_setup['pixel_coords']
-
-    T = T_init.copy()
+        T = T_init.copy()
+        
+        T_max = np.zeros(simulation_steps)
+        variance_list = np.zeros(simulation_steps)
     
-    T_max = np.zeros(simulation_steps)
-    variance_list = np.zeros(simulation_steps)
+        ilu = spilu(setup['lhs_matrix'].tocsc(), fill_factor=1)  
+        M_ilu = LinearOperator(setup['lhs_matrix'].shape, ilu.solve)
+        
+        for n in range(simulation_steps):
+            S = np.zeros(num_nodes)
+            melt_node = melting_sequence[n]
+            S[melt_node] = Q_melt
+            S_total = S + setup['b']
+           
+            rhs = setup['rhs_matrix'].dot(T) + setup['dt'] * S_total
 
-    ilu = spilu(lhs_matrix.tocsc(), fill_factor=1)  
-    M_ilu = LinearOperator(lhs_matrix.shape, ilu.solve)
-    
-    for n in range(simulation_steps):
-        S = np.zeros(num_nodes)
-        melt_node = melting_sequence[n]
-        S[melt_node] = Q_melt
-        S_total = S + b
-       
-        rhs = rhs_matrix.dot(T) + dt * S_total
+            # Solve the linear system
+            T, info = bicgstab(setup['lhs_matrix'], rhs, x0=T, tol=1e-2, maxiter=100, M=M_ilu)
+            
+            T_max[n] = np.max(T[internal_nodes])
+            variance_list[n] = np.var(T[internal_nodes])
+        
+        variance_list = np.log(variance_list)
+        variance_of_variances = np.mean(variance_list)
+        
+        if plot_melting:
+            visualizer = Visualizer()
+            visualizer.visualize_T_over_time(simulation_steps, T_max, variance_list)
+            visualizer.visualize_temperature_2D(spot_coords, T)
+        
+        return variance_of_variances, variance_list
 
-        T, _ = bicgstab(lhs_matrix, rhs, x0 = T, tol = 1e-4, maxiter = 100, M = M_ilu)
-        T_max[n] = np.max(T[internal_nodes])
-        variance_list[n] = np.var(T[internal_nodes])
-    variance_list = np.log(variance_list)
-    variance_of_variances = np.mean(variance_list)
-    if plot_melting:
-        visualize_T_over_time(simulation_steps, T_max, variance_list)
-        visualize_temperature_2D(pixel_coords, T)
-    
-    return variance_of_variances, variance_list
 
-def construct_adjacency_matrix(knn_indices, conductances):
-    num_nodes = len(knn_indices)
-    row_indices = np.repeat(np.arange(num_nodes), knn_indices.shape[1])
-    col_indices = knn_indices.flatten()
-    data = conductances.flatten()
-    adjacency_matrix = csr_matrix((data, (row_indices, col_indices)), shape = (num_nodes, num_nodes))
-    return adjacency_matrix
+class Visualizer:
+    def visualize_temperature_2D(spot_coords, temperatures):
+        x_coords = spot_coords[:, 0]
+        y_coords = spot_coords[:, 1]
+        plt.figure(figsize=(8, 8))
+        scatter = plt.scatter(x_coords, y_coords, c=temperatures, cmap='hot', s=16, marker='s')
+        plt.colorbar(scatter, label='Temperature')
+        plt.axis('equal')
+        plt.title('Temperature Distribution')
+        plt.show()
 
-def construct_degree_matrix(adjacency_matrix):
-    degrees = np.array(adjacency_matrix.sum(axis = 1)).flatten()
-    degree_matrix = diags(degrees, format='csr')
-    return degree_matrix
+    def visualize_T_over_time(simulation_steps, T_max, variance_list):
+        fig, ax1 = plt.subplots(figsize=(10, 6))
 
-def construct_laplacian_matrix(knn_indices, conductances):
-    adjacency_matrix = construct_adjacency_matrix(knn_indices, conductances)
-    degree_matrix = construct_degree_matrix(adjacency_matrix)
-    return degree_matrix - adjacency_matrix
+        color = 'tab:blue'
+        ax1.set_xlabel('Simulation Step')
+        ax1.set_ylabel('Max Temperature', color=color)
+        ax1.plot(range(simulation_steps), T_max, color=color, label='Max Temperature')
+        ax1.tick_params(axis='y', labelcolor=color)
 
-def visualize_temperature_2D(pixel_coords, temperatures):
-    x_coords = pixel_coords[:, 0]
-    y_coords = pixel_coords[:, 1]
-    plt.figure(figsize=(8, 8))
-    scatter = plt.scatter(x_coords, y_coords, c=temperatures, cmap='hot', s=16, marker='s')
-    plt.colorbar(scatter, label='Temperature')
-    plt.axis('equal')
-    plt.show()
+        ax2 = ax1.twinx()
 
-def visualize_T_over_time(simulation_steps, T_max, variance_list):
-    fig, ax1 = plt.subplots()
+        color = 'tab:red'
+        ax2.set_ylabel('Temperature Variance', color=color)
+        ax2.plot(range(simulation_steps), variance_list, color=color, label='Temperature Variance')
+        ax2.tick_params(axis='y', labelcolor=color)
 
-    ax1.plot(range(simulation_steps), T_max, color='b', label='Max Temperature')
-    ax1.set_xlabel('Simulation Step')
-    ax1.set_ylabel('Max Temperature', color='b')
-    ax1.tick_params(axis='y', labelcolor='b')
-
-    ax2 = ax1.twinx()
-    ax2.plot(range(simulation_steps), variance_list, color='r', label='Temperature Variance')
-    ax2.set_ylabel('Temperature Variance', color='r')
-    ax2.tick_params(axis='y', labelcolor='r')
-
-    ax1.legend(loc='upper left')
-    ax2.legend(loc='upper right')
-
-    plt.show()
+        fig.tight_layout()
+        plt.title('Temperature Over Time')
+        plt.show()
