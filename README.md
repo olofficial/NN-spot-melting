@@ -13,7 +13,7 @@ I formulated the task as an optimization problem over melting sequences: the ord
 The heat equation is a common parabolic Partial Differential Equation (PDE):
 
 $$
-\frac{\partial T}{\partial t} = \Delta u = \nabla \cdot (k \nabla T) - h(T - T_0).
+\frac{\partial T}{\partial t} = \Delta u = \nabla \cdot (k \nabla T) - h(T - T_0),
 $$
 
 where
