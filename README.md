@@ -11,6 +11,7 @@ I formulated the task as an optimization problem over melting sequences: the ord
 ## Physical model
 ### Heat equation
 The heat equation is a common parabolic Partial Differential Equation (PDE):
+
 $$
 \frac{\partial T}{\partial t} = \Delta u = \nabla \cdot (k \nabla T) - h(T - T_0).
 $$
@@ -30,18 +31,22 @@ The geometry used is a **barbell**: two large disks connected by a thin neck. Th
 
 ### Numerical Solver
 The temporal discretization follows the Crank–Nicolson method:
+
 $$
 (I + \frac{\Delta t}{2} A) T^{n+1} = (I - \frac{\Delta t}{2} A) T^n + \Delta t S,
 $$
+
 where
 - $A$ is the Laplacian matrix + boundary heat loss term,
 - $S$ is the source term for the melting point at the current step,
 - We solve this system iteratively for each time step using BiCGSTAB with ILU preconditioning.
 
 To ensure an even temperature distribution, we want to minimize the **log variance of the internal temperatures over time**:
+
 $$
 \frac{1}{N} \sum_{n=1}^N \log(\mathrm{Var}[T^n_{{internal}}])
 $$
+
 Henceforth, this log-variance metric will be abbreviated as LVM.
 
 
