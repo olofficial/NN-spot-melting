@@ -2,6 +2,7 @@ import torch
 from torch.utils.data import Dataset
 import numpy as np
 
+
 class MeltingSequenceDataset(Dataset):
     def __init__(self, training_data, coords):
         self.sequences = [torch.tensor(seq, dtype=torch.long) for seq, _ in training_data]

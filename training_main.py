@@ -2,7 +2,6 @@ from data_generation.random_data_generator import generate_random_sequences
 from data_generation.genetic_data_generator import generate_genetic_sequences
 from data_generation.utils import save_node_coords, combine_datasets
 from thermal_simulation.melting import SimulationSetup
-#from data_generation.visualization import plot_variance_metric
 
 
 def generate_training_data(total_sequences, random_ratio, spots_per_m, visualize=False):
@@ -29,4 +28,4 @@ def generate_training_data(total_sequences, random_ratio, spots_per_m, visualize
 
 
 if __name__ == "__main__":
-    generate_training_data(total_sequences=100, random_ratio=0.7, spots_per_m=600, visualize=True)
+    generate_training_data(total_sequences=1, random_ratio=0, spots_per_m=600, visualize=True)

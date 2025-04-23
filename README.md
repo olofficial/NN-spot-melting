@@ -6,13 +6,16 @@ This project is aimed at a specific problem in E-PBF: **how to maximize thermal 
 
 I formulated the task as an optimization problem over melting sequences: the order in which points in the 2D cross-section are heated. The goal is to **predict a sequence that keeps the temperature field as uniform as possible throughout the melting of the layer**.
 
+It's worth noting that I am competing against a random melting sequence, which is harder than it sounds! I am happy if I can produce a "temperature evenness" that is consistently 20% better than the random sequences.
+
 ---
 
 ## Physical model
 ### Heat equation
 The heat equation is a common parabolic Partial Differential Equation (PDE):
+
 $$
-\frac{\partial T}{\partial t} = \Delta u = \nabla \cdot (k \nabla T) - h(T - T_0).
+\frac{\partial T}{\partial t} = \Delta u = \nabla \cdot (k \nabla T) - h(T - T_0),
 $$
 
 where
@@ -30,19 +33,39 @@ The geometry used is a **barbell**: two large disks connected by a thin neck. Th
 
 ### Numerical Solver
 The temporal discretization follows the Crank–Nicolson method:
+
 $$
 (I + \frac{\Delta t}{2} A) T^{n+1} = (I - \frac{\Delta t}{2} A) T^n + \Delta t S,
 $$
+
 where
 - $A$ is the Laplacian matrix + boundary heat loss term,
 - $S$ is the source term for the melting point at the current step,
 - We solve this system iteratively for each time step using BiCGSTAB with ILU preconditioning.
 
 To ensure an even temperature distribution, we want to minimize the **log variance of the internal temperatures over time**:
+
 $$
 \frac{1}{N} \sum_{n=1}^N \log(\mathrm{Var}[T^n_{{internal}}])
 $$
+
 Henceforth, this log-variance metric will be abbreviated as LVM.
+
+### Sample results
+Below are examples of one problematic and one less problematic temperature distribution:
+![alt text](figs/barbell_plots/problematic_barbell_plot.png)
+![alt text](figs/barbell_plots/less_problematic_barbell_plot.png)
+
+Note the temperature scales. The temperature of 7 000 - 10 000 degrees is of course unphysical: I have sample values that could be adjusted to get realistic temperatures. 
+
+In the problematic plot, the barbell handle has one very hot spot. This is what I aim to mitigate with this project.
+
+The corresponding temperature and LVM plots over the build sequence:
+
+![alt text](figs/temp_plots/problematic_temp.png)
+![alt text](figs/temp_plots/less_problematic_temp.png)
+
+We see that the LVM for the less problematic case (bottom) kind of "converges" as the spots are melted, while it oscillates more for the more problematic case (top).
 
 
 ## Data collection
@@ -60,6 +83,8 @@ I generate melting sequences in two ways:
     4. Elites (best-performing individuals) are retained each generation.
 
     This gives us (hopefully) good melting sequences without evaluating every possible combination (which is infeasible). The best sequences found by the genetic algorithm are used as training data and as performance comparison for the learning model.
+
+
 
 ## Machine learning
 UNDER CONSTRUCTION

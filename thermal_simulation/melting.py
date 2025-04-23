@@ -3,18 +3,16 @@ from barbell import barbell
 from scipy.sparse import csr_matrix, diags, identity
 from scipy.sparse.linalg import bicgstab, spilu, LinearOperator
 import matplotlib.pyplot as plt
-from typing import Dict, Tuple, Optional, List
 from joblib import Parallel, delayed
-
+from scipy.spatial import cKDTree
+from barbell.barbell import grid_barbell
 
 class ConductanceCalculator:
     def initialize_conductances(knn_distances, k_0 = 170.0):
         conductances = k_0 / knn_distances
         return conductances
 
-
 class MatrixBuilder:
-    
     def construct_adjacency_matrix(knn_indices, conductances):
         num_nodes = len(knn_indices)
         row_indices = np.repeat(np.arange(num_nodes), knn_indices.shape[1])
@@ -22,7 +20,7 @@ class MatrixBuilder:
         data = conductances.flatten()
         adjacency_matrix = csr_matrix((data, (row_indices, col_indices)), shape=(num_nodes, num_nodes))
         return adjacency_matrix
-
+    
     def construct_degree_matrix(adjacency_matrix):
         degrees = np.array(adjacency_matrix.sum(axis=1)).flatten()
         degree_matrix = diags(degrees, format='csr')
@@ -34,10 +32,8 @@ class MatrixBuilder:
         laplacian_matrix = degree_matrix - adjacency_matrix
         return laplacian_matrix
 
-
 class SimulationSetup:
-    def __init__(self, spots_per_m, points_per_second = 1000, k = 4,
-                 T_init = None, melting_sequence = None):
+    def __init__(self, spots_per_m, points_per_second = 1000, k = 4, T_init = None, melting_sequence = None):
         self.spots_per_m = spots_per_m
         self.points_per_second = points_per_second
         self.k = k
@@ -138,7 +134,7 @@ class MeltingSimulator:
            
             rhs = setup['rhs_matrix'].dot(T) + setup['dt'] * S_total
 
-            # Solve the linear system
+            #solve the linear system
             T, info = bicgstab(setup['lhs_matrix'], rhs, x0=T, tol=1e-2, maxiter=100, M=M_ilu)
             
             T_max[n] = np.max(T[internal_nodes])
@@ -149,24 +145,38 @@ class MeltingSimulator:
         
         if plot_melting:
             visualizer = Visualizer()
-            visualizer.visualize_T_over_time(simulation_steps, T_max, variance_list)
             visualizer.visualize_temperature_2D(spot_coords, T)
-        
+            visualizer.visualize_T_over_time(simulation_steps, T_max, variance_list)
+            
         return variance_of_variances, variance_list
 
 
 class Visualizer:
-    def visualize_temperature_2D(spot_coords, temperatures):
-        x_coords = spot_coords[:, 0]
-        y_coords = spot_coords[:, 1]
-        plt.figure(figsize=(8, 8))
-        scatter = plt.scatter(x_coords, y_coords, c=temperatures, cmap='hot', s=16, marker='s')
-        plt.colorbar(scatter, label='Temperature')
-        plt.axis('equal')
-        plt.title('Temperature Distribution')
+    def visualize_temperature_2D(self, spot_coords, temperatures):
+        spots_per_m = 600  # match simulation resolution
+        barbell_mask, X, Y = grid_barbell(spots_per_m)
+
+        temp_map = np.full_like(barbell_mask, np.nan, dtype=float)
+        active = barbell_mask > 0
+        coord_map = np.column_stack((X[active], Y[active]))
+
+        from scipy.spatial import cKDTree
+        tree = cKDTree(spot_coords)
+        _, idx = tree.query(coord_map)
+        temp_map[active] = temperatures[idx]
+
+        cmap = plt.cm.hot
+        cmap.set_bad(color='white')
+
+        fig, ax = plt.subplots(figsize=(6, 6))
+        im = ax.imshow(np.ma.masked_invalid(temp_map), cmap=cmap, origin='lower',
+                       extent=[X.min(), X.max(), Y.min(), Y.max()], aspect='equal')
+        cbar = fig.colorbar(im, ax=ax, orientation='horizontal', pad=0.1)
+        cbar.set_label('Temperature')
+        plt.tight_layout()
         plt.show()
 
-    def visualize_T_over_time(simulation_steps, T_max, variance_list):
+    def visualize_T_over_time(self, simulation_steps, T_max, variance_list):
         fig, ax1 = plt.subplots(figsize=(10, 6))
 
         color = 'tab:blue'
