@@ -2,7 +2,6 @@ import torch
 from torch.utils.data import Dataset
 import numpy as np
 
-
 class MeltingSequenceDataset(Dataset):
     def __init__(self, training_data, coords):
         self.sequences = [torch.tensor(seq, dtype=torch.long) for seq, _ in training_data]
@@ -42,7 +41,6 @@ def plot_variance_metric(log_variances):
     plt.grid(True)
     plt.tight_layout()
     plt.show()
-
 
 def plot_temperature_distribution(coords, temperatures):
     import matplotlib.pyplot as plt

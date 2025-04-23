@@ -24,7 +24,7 @@ class GeneticAlgorithm:
     def fitness(self, sequence):
         setup = SimulationSetup(self.spots_per_m, melting_sequence=sequence).simulation_setup
         sim = MeltingSimulator(setup)
-        value, _ = sim.compute_melting(plot_melting=False)
+        value, _ = sim.compute_melting(plot_melting=True)
         return 1.0 / (value + 1e-6)
 
     def selection(self, pop, fitness, k=2):

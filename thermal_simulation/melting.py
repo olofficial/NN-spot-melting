@@ -153,7 +153,7 @@ class MeltingSimulator:
 
 class Visualizer:
     def visualize_temperature_2D(self, spot_coords, temperatures):
-        spots_per_m = 600  # match simulation resolution
+        spots_per_m = 600
         barbell_mask, X, Y = grid_barbell(spots_per_m)
 
         temp_map = np.full_like(barbell_mask, np.nan, dtype=float)

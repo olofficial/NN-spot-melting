@@ -8,8 +8,6 @@ I formulated the task as an optimization problem over melting sequences: the ord
 
 It's worth noting that I am competing against a random melting sequence, which is harder than it sounds! I am happy if I can produce a "temperature evenness" that is consistently 20% better than the random sequences.
 
----
-
 ## Physical model
 ### Heat equation
 The heat equation is a common parabolic Partial Differential Equation (PDE):
@@ -67,6 +65,9 @@ The corresponding temperature and LVM plots over the build sequence:
 
 We see that the LVM for the less problematic case (bottom) kind of "converges" as the spots are melted, while it oscillates more for the more problematic case (top).
 
+The code supports varying fineness at the cost of simulation speed:
+
+![alt text](figs/barbell_plots/fine_plot.png)
 
 ## Data collection
 
@@ -88,3 +89,10 @@ I generate melting sequences in two ways:
 
 ## Machine learning
 UNDER CONSTRUCTION
+
+# TODO
+1. Comment code...
+2. Implement machine learning (leaning toward using a transformer model)
+3. Streamline my visualization tools (I want to be able to extract the best sequence from the training data and plot it)
+4. ???
+5. (Stretch) Implement hierarchical learning (train model on 600 pts/m, then use that as starting guess for 1200 pts/m, etc) until the model works well on a 100 000 points/m discretization.
